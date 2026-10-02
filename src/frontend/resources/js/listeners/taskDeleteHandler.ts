@@ -12,9 +12,10 @@ export default async function taskDeleteHandler(event: Event): Promise<void> {
   if (!confirmed) return;
 
   try {
-    await taskDeleteApi(idUser, taskId);
+    await taskDeleteApi(taskId);
     await tasksListRender(idUser);
   } catch (error) {
+    alert("Erro ao excluir tarefa");
     console.error(error);
   }
 }
