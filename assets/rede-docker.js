@@ -3,7 +3,7 @@
    num SVG por cima, a partir da posição real de cada elemento (recalculadas
    quando o tamanho muda). Sem else: early return / continue. */
 (function(){
-  var W = 1800;
+  var W = 2100;
   var stage = document.getElementById('stage');
   var svg = document.getElementById('wires');
   var NS = 'http://www.w3.org/2000/svg';
@@ -24,9 +24,18 @@
            vol (montagem de volume/pasta)
      flow (só nas montagens): in = o container lê da pasta/volume,
            out = o container escreve nela, both = lê e escreve
-     points: pontos intermediários no sistema 1800 × 1160 (setas com cotovelo) */
+     points: pontos intermediários no sistema 2100 × 1300 (setas com cotovelo) */
   var EDGES = [
-    { id: 'b-8080', from: 'browser', to: 'p8080', kind: 'port' },
+    { id: 'b-8080', from: 'browser', to: 'p8080', kind: 'port', points: [[78, 449]] },
+    /* clientes de outros dispositivos (rede local): sobem pela esquerda até as portas do host */
+    { id: 'phone-8080', from: 'phone', to: 'p8080', kind: 'port', points: [[155, 1135], [36, 1135], [36, 500], [110, 500]] },
+    { id: 'peer-8080', from: 'peer', to: 'p8080', kind: 'port', points: [[445, 1115], [56, 1115], [56, 520], [118, 520]] },
+    { id: 'peer-5172', from: 'peer', to: 'p5172', kind: 'port', points: [[445, 1115], [56, 1115], [56, 805], [124, 805]] },
+    /* variantes túnel (espessas): os mesmos caminhos, usados só nos cenários de WebSocket */
+    { id: 'b-8080-t', from: 'browser', to: 'p8080', kind: 'port', tunnel: true, scenarioOnly: true, points: [[78, 449]] },
+    { id: 'phone-8080-t', from: 'phone', to: 'p8080', kind: 'port', tunnel: true, scenarioOnly: true, points: [[155, 1135], [36, 1135], [36, 500], [110, 500]] },
+    { id: 'peer-8080-t', from: 'peer', to: 'p8080', kind: 'port', tunnel: true, scenarioOnly: true, points: [[445, 1115], [56, 1115], [56, 520], [118, 520]] },
+    { id: '8080-nginx-t', from: 'p8080', to: 'nginx', kind: 'port', tunnel: true, scenarioOnly: true },
     { id: '8080-nginx', from: 'p8080', to: 'nginx', kind: 'port' },
     { id: 'b-5172', from: 'browser', to: 'p5172', kind: 'port', points: [[78, 795]] },
     { id: '5172-hmr', from: 'p5172', to: 'vitehmr', kind: 'port' },
@@ -38,15 +47,17 @@
     { id: '6789-pg', from: 'p6789', to: 'postgres', kind: 'port' },
 
     { id: 'nginx-web', from: 'nginx', to: 'nodeweb', kind: 'net', points: [[1040, 465]] },
+    { id: 'nginx-ws', from: 'nginx', to: 'nodewebsocket', kind: 'net', tunnel: true, points: [[800, 432], [1877, 432]] },
+    { id: 'ws-rabbit', persist: true, from: 'nodewebsocket', to: 'rabbitmq', kind: 'net', points: [[1990, 600], [1990, 410], [990, 410]] },
     { id: 'web-rabbit', from: 'nodeweb', to: 'rabbitmq', kind: 'net', points: [[1110, 640], [1110, 430]] },
     { id: 'web-pg', from: 'nodeweb', to: 'postgres', kind: 'net' },
-    { id: 'web-es', from: 'nodeweb', to: 'elasticsearch', kind: 'net' },
+    { id: 'web-es', pool: true, from: 'nodeweb', to: 'elasticsearch', kind: 'net' },
     { id: 'cmd-rabbit', from: 'nodecommand', to: 'rabbitmq', kind: 'net' },
     { id: 'cmd-pg', from: 'nodecommand', to: 'postgres', kind: 'net' },
-    { id: 'cmd-es', from: 'nodecommand', to: 'elasticsearch', kind: 'net' },
-    { id: 'worker-rabbit', from: 'nodeworker', to: 'rabbitmq', kind: 'net' },
+    { id: 'cmd-es', pool: true, from: 'nodecommand', to: 'elasticsearch', kind: 'net' },
+    { id: 'worker-rabbit', persist: true, from: 'nodeworker', to: 'rabbitmq', kind: 'net' },
     { id: 'worker-pg', from: 'nodeworker', to: 'postgres', kind: 'net' },
-    { id: 'worker-es', from: 'nodeworker', to: 'elasticsearch', kind: 'net' },
+    { id: 'worker-es', pool: true, from: 'nodeworker', to: 'elasticsearch', kind: 'net' },
 
 
     { id: 'm-nginx-public', from: 'nginx', to: 'v-public', kind: 'vol', flow: 'in', src: 'mb-nginx-public' },
@@ -64,6 +75,8 @@
     { id: 'm-cmd-nm', from: 'nodecommand', to: 'v-nodemodules', kind: 'vol', flow: 'in', src: 'mb-cmd-nm' },
     { id: 'm-worker-src', from: 'nodeworker', to: 'b-src', kind: 'vol', flow: 'in' , anchor: 'mb-worker-src' },
     { id: 'm-worker-nm', from: 'nodeworker', to: 'v-nodemodules', kind: 'vol', flow: 'in', src: 'mb-worker-nm' },
+    { id: 'm-ws-src', from: 'nodewebsocket', to: 'b-src', kind: 'vol', flow: 'in' , anchor: 'mb-ws-src' },
+    { id: 'm-ws-nm', from: 'nodewebsocket', to: 'v-nodemodules', kind: 'vol', flow: 'in', src: 'mb-ws-nm' },
     { id: 'm-pg-vol', from: 'postgres', to: 'v-postgres', kind: 'vol', flow: 'both', src: 'mb-pg-vol' },
     { id: 'm-pg-init', from: 'postgres', to: 'b-init', kind: 'vol', flow: 'in' , anchor: 'mb-pg-init' },
     { id: 'm-rabbit-vol', from: 'rabbitmq', to: 'v-rabbitmq', kind: 'vol', flow: 'both', src: 'mb-rabbit-vol' },
@@ -72,12 +85,15 @@
 
   /* ── detalhes de cada item (painel) ─────────────────────── */
   var INFO = {
+    phone: { t: 'Celular (outro dispositivo, mesma rede Wi-Fi)', p: 'Fora do seu PC e fora da app-network. Abre http://IP-DO-SEU-PC:8080/chat (o IP da rede, ex.: 192.168.1.171) e cai na porta 8080 → nginx, igual ao navegador. O túnel WebSocket sobe pelo mesmo caminho. O nginx repassa o IP real em X-Real-IP (é o que aparece na lista de online).' },
+    peer: { t: 'PC de colega (mesma rede local)', p: 'Outro computador da sala. Também usa o IP do seu PC: 8080 para o site e o chat, 5172 se você deixar o Vite HMR aberto. Qualquer porta publicada fica alcançável na rede (5672, 15672, 6789 também, se o firewall deixar), mas só a 8080 é a do dia a dia.' },
     browser: { t: 'Navegador (no host)', p: 'Está fora da rede Docker. Só alcança o que tem porta publicada: 8080 (nginx), 5172 (Vite HMR) e 15672 (painel do RabbitMQ).' },
     tools: { t: 'Ferramentas no host', p: 'psql, DBeaver ou um Node rodando fora do Docker. Entram pelas portas publicadas 6789 (Postgres) e 5672 (RabbitMQ).' },
-    nginx: { t: 'nginx-container', d: [['imagem', 'build docker/nginx (nginx:stable-alpine)'], ['porta', '8080 no host → 80'], ['hostname', 'sem alias (ninguém chama o nginx por dentro)'], ['montagens', 'public-volume → /var/www · ./aulas → /var/www/aulas · ./src/logs/nginx → /var/log/nginx']], p: 'Porta de entrada. try_files procura o arquivo estático em /var/www (public-volume); se não achar, @node faz proxy_pass para nodeweb_host:3000.' },
+    nginx: { t: 'nginx-container', d: [['imagem', 'build docker/nginx (nginx:stable-alpine)'], ['porta', '8080 no host → 80'], ['hostname', 'sem alias (ninguém chama o nginx por dentro)'], ['montagens', 'public-volume → /var/www · ./aulas → /var/www/aulas · ./src/logs/nginx → /var/log/nginx']], p: 'Porta de entrada. try_files procura o arquivo estático em /var/www (public-volume); se não achar, @node faz proxy_pass para nodeweb_host:3000. Para o chat, location /socket.io/ repassa o Upgrade e DISTRIBUI as conexões entre as réplicas do nodewebsocket (upstream): o nginx também entra na escalabilidade.' },
     nodeweb: { t: 'nodeweb-container', d: [['imagem', 'build docker/node-web (node:25)'], ['entry point', 'nodemon _web.js (Express na 3000)'], ['hostname', 'nodeweb_host'], ['montagens', './src → /app · public-volume → /app/public · nodemodules-volume → /app/node_modules']], p: 'API, views EJS e busca. Fala com postgres_host:5432, rabbitmq_host:5672 (dispatch de jobs) e elasticsearch_host:9200 (busca). Não tem porta no host: só o nginx chega nele.' },
     nodecommand: { t: 'nodecommand-container (efêmero)', d: [['imagem', 'build docker/node-command (node:25)'], ['entry point', 'node _command.js (migrate, seed, create-example-job...)'], ['hostname', 'nodecommand_host'], ['montagens', './src → /app · nodemodules-volume → /app/node_modules'], ['ciclo de vida', 'sobe, executa um comando e some (run --rm)']], p: 'Não fica rodando: docker compose run --rm nodecommand-container migrate cria o container, executa o comando e o remove. Tem acesso a Postgres, RabbitMQ e Elastic (migrations, seeds, carga inicial do índice).' },
-    nodeworker: { t: 'nodeworker-container', d: [['imagem', 'build docker/node-worker (node:25)'], ['entry point', 'nodemon _worker.js (fila default)'], ['hostname', 'nodeworker_host'], ['montagens', './src → /app · nodemodules-volume → /app/node_modules']], p: 'Consome a fila do RabbitMQ e executa os jobs de app/Jobs, como o SyncUserElasticJob: lê o usuário no Postgres e grava no Elasticsearch.' },
+    nodewebsocket: { t: 'nodewebsocket-container', d: [['imagem', 'build docker/node-websocket (node:25)'], ['entry point', 'nodemon _websocket.js --exchange notifications --port 3001'], ['hostname', 'nodewebsocket_host (porta 3001 só dentro da rede)'], ['montagens', './src → /app · nodemodules-volume → /app/node_modules']], p: 'Mantém os túneis WebSocket (Socket.IO) abertos com os navegadores e é consumer do exchange fanout do RabbitMQ: cada Event do cliente vira publish no exchange, e a cópia que volta na fila exclusiva deste servidor vira io.emit para os clients dele. Só conecta e distribui eventos: o trabalho pesado (como processar uma imagem) vai para o nodeworker pelo mesmo RabbitMQ. Cada instância cria a sua fila dinâmica nos exchanges notifications e results. Sem porta no host: o nginx repassa o Upgrade (location /socket.io/). Escala com --scale nodewebsocket-container=N.' },
+    nodeworker: { t: 'nodeworker-container', d: [['imagem', 'build docker/node-worker (node:25)'], ['entry point', 'nodemon _worker.js (fila default)'], ['hostname', 'nodeworker_host'], ['montagens', './src → /app · nodemodules-volume → /app/node_modules']], p: 'Consome a fila do RabbitMQ e executa os jobs de app/Jobs, como o SyncUserElasticJob: lê o usuário no Postgres e grava no Elasticsearch. Também recebe o trabalho pesado que o websocket não deve fazer (ex.: processar a imagem enviada no chat, fila images) e publica o resultado em outro exchange.' },
     vitehmr: { t: 'nodevitehmr-container', d: [['imagem', 'build docker/node-vite-hmr (node:25)'], ['porta', '5172 no host → 5172'], ['montagens', './src/resources → /app/resources · nodemodules-volume → /app/node_modules']], p: 'Servidor de desenvolvimento do Vite com HMR: o navegador abre localhost:5172 e vê as mudanças do TypeScript na hora.' },
     vitecompiler: { t: 'nodevitecompiler-container', d: [['imagem', 'build docker/node24-vite-compiler (node:24)'], ['entry point', 'vite build --watch'], ['montagens', './src/resources → /app/resources · public-volume → /app/public · nodemodules-volume → /app/node_modules']], p: 'Não é servidor: compila resources/ (do seu PC) para public/ (public-volume), que o nginx serve e o nodeweb lê (manifest do helper vite()).' },
     postgres: { t: 'postgres-container', d: [['imagem', 'postgres:18'], ['porta', '6789 no host → 5432'], ['hostname', 'postgres_host'], ['montagens', 'postgres-volume → /var/lib/postgresql · ./src/docker/postgres/init → /docker-entrypoint-initdb.d']], p: 'Fonte da verdade. Os dados vivem no postgres-volume e sobrevivem a docker compose down.' },
@@ -103,27 +119,37 @@
   /* ── cenários ─────────────────────────────────────────── */
   var SCENARIOS = {
     pagina: { t: 'HTTP estático (Vite pré-compiler)', steps: [
-      { e: ['m-compiler-resources', 'm-compiler-public', 'b-8080', '8080-nginx', 'm-nginx-public'] }
+      { e: ['m-compiler-resources', 'm-compiler-public', 'b-8080', 'phone-8080', 'peer-8080', '8080-nginx', 'm-nginx-public'] }
     ]},
     list: { t: 'HTTP API · list e get one (GET /users e GET /users/:id)', steps: [
-      { e: ['b-8080', '8080-nginx', 'nginx-web', 'web-pg'], x: 'Uma API HTTP comum: GET /users (list) ou GET /users/:id (get one) entra pela 8080 do host (→ 80 do nginx). Não existe arquivo com esse caminho no public-volume, então o nginx faz proxy_pass para nodeweb_host:3000. No nodeweb, rota → controller → UserModel (findAndCountAll na lista, findByPk no get one), que consulta o Postgres em postgres_host:5432.' },
-      { e: ['nginx-web', '8080-nginx', 'b-8080'], x: 'O controller monta o JSON (a lista paginada { page, limit, total, next, data } ou o usuário encontrado) e responde. A resposta volta pelo mesmo caminho: nodeweb → nginx → navegador. Sem fila, sem Elastic: só nginx, Node e Postgres.' }
+      { e: ['b-8080', 'phone-8080', 'peer-8080', '8080-nginx', 'nginx-web', 'web-pg'], x: 'Uma API HTTP comum: GET /users (list) ou GET /users/:id (get one) entra pela 8080 do host (→ 80 do nginx). Não existe arquivo com esse caminho no public-volume, então o nginx faz proxy_pass para nodeweb_host:3000. No nodeweb, rota → controller → UserModel (findAndCountAll na lista, findByPk no get one), que consulta o Postgres em postgres_host:5432.' },
+      { e: ['nginx-web', '8080-nginx', 'b-8080', 'phone-8080', 'peer-8080'], x: 'O controller monta o JSON (a lista paginada { page, limit, total, next, data } ou o usuário encontrado) e responde. A resposta volta pelo mesmo caminho: nodeweb → nginx → navegador. Sem fila, sem Elastic: só nginx, Node e Postgres.' }
     ]},
     hmr: { t: 'Vite HMR (desenvolvimento)', steps: [
-      { e: ['b-5172', '5172-hmr', 'm-hmr-resources', 'm-hmr-nm'], x: 'Modo desenvolvimento: o navegador abre localhost:5172, que vai direto para o vite-hmr (nodevitehmr-container:5172), sem passar pelo nginx. O Vite lê o código do seu PC em /app/resources (bind ./src/resources) e as dependências no nodemodules-volume, e compila em memória: nada é escrito no public-volume.' },
-      { e: ['m-hmr-resources', '5172-hmr', 'b-5172'], x: 'Você salva um .ts em ./src/resources: o vite-hmr enxerga a mudança na hora (bind mount), recompila só aquele módulo e avisa o navegador por WebSocket (na mesma porta 5172). O navegador troca o módulo sem recarregar a página: Hot Module Replacement.' }
+      { e: ['b-5172', 'peer-5172', '5172-hmr', 'm-hmr-resources', 'm-hmr-nm'], x: 'Modo desenvolvimento: o navegador abre localhost:5172, que vai direto para o vite-hmr (nodevitehmr-container:5172), sem passar pelo nginx. O Vite lê o código do seu PC em /app/resources (bind ./src/resources) e as dependências no nodemodules-volume, e compila em memória: nada é escrito no public-volume.' },
+      { e: ['m-hmr-resources', '5172-hmr', 'b-5172', 'peer-5172'], x: 'Você salva um .ts em ./src/resources: o vite-hmr enxerga a mudança na hora (bind mount), recompila só aquele módulo e avisa o navegador por WebSocket (na mesma porta 5172). O navegador troca o módulo sem recarregar a página: Hot Module Replacement.' }
     ]},
     migration: { t: 'Migration (nodecommand)', steps: [
       { e: ['m-cmd-src', 'm-cmd-nm', 'cmd-pg', 'm-pg-vol'], x: 'No terminal do host: docker compose run --rm nodecommand-container migrate. O Docker cria um container efêmero do node-command, que lê as migrations do seu PC (./src → /app/database/migrations) e as dependências (nodemodules-volume), conecta no Postgres pela rede interna (postgres_host:5432), executa as migrations pendentes e registra na tabela migrations. O Postgres grava as tabelas no postgres-volume.' },
       { e: [], items: ['nodecommand', 'postgres'], x: 'O comando termina e o --rm apaga o container: o nodecommand só existiu durante a execução. O que fica é o resultado no Postgres, persistido no postgres-volume.' }
     ]},
     fila: { t: 'HTTP API · actions (POST / PUT / DELETE /users)', steps: [
-      { e: ['b-8080', '8080-nginx', 'nginx-web', 'web-pg', 'web-rabbit', 'worker-rabbit', 'worker-pg', 'worker-es'], x: 'Igual ao list e get one até o Postgres: a action (POST, PUT ou DELETE /users) entra pela 8080, o nginx passa para nodeweb_host:3000 e o controller grava no Postgres (postgres_host:5432). A diferença: o controller publica um job no RabbitMQ (rabbitmq_host:5672), o RabbitMQ entrega ao nodeworker (fila default), e o worker lê o usuário atual no Postgres e grava no Elasticsearch (elasticsearch_host:9200): PUT se existe, DELETE se não existe mais.' },
-      { e: ['nginx-web', '8080-nginx', 'b-8080'], x: 'O controller responde (201, 200 ou 204) logo depois de publicar o job: a resposta volta nodeweb → nginx → navegador sem esperar o worker nem o Elastic. Por isso a busca pode levar alguns milissegundos para enxergar a mudança.' }
+      { e: ['b-8080', 'phone-8080', 'peer-8080', '8080-nginx', 'nginx-web', 'web-pg', 'web-rabbit', 'worker-rabbit', 'worker-pg', 'worker-es'], x: 'Igual ao list e get one até o Postgres: a action (POST, PUT ou DELETE /users) entra pela 8080, o nginx passa para nodeweb_host:3000 e o controller grava no Postgres (postgres_host:5432). A diferença: o controller publica um job no RabbitMQ (rabbitmq_host:5672), o RabbitMQ entrega ao nodeworker (fila default), e o worker lê o usuário atual no Postgres e grava no Elasticsearch (elasticsearch_host:9200): PUT se existe, DELETE se não existe mais.' },
+      { e: ['nginx-web', '8080-nginx', 'b-8080', 'phone-8080', 'peer-8080'], x: 'O controller responde (201, 200 ou 204) logo depois de publicar o job: a resposta volta nodeweb → nginx → navegador sem esperar o worker nem o Elastic. Por isso a busca pode levar alguns milissegundos para enxergar a mudança.' }
+    ]},
+    websocket: { t: 'WebSocket · chat (túnel)', steps: [
+      { e: ['b-8080-t', 'phone-8080-t', 'peer-8080-t', '8080-nginx-t', 'nginx-ws'], x: 'O React abre o túnel: um GET com Upgrade: websocket entra pela 8080 e o nginx o repassa (location /socket.io/) para nodewebsocket_host:3001. O servidor responde 101 Switching Protocols e a MESMA conexão passa a trocar frames nos dois sentidos: é o túnel, aberto pelo cliente, que fica aberto enquanto a aba estiver aberta.' },
+      { e: ['nginx-ws', 'ws-rabbit'], x: 'O aluno envia chat:message pelo túnel. O Event não entrega nada na tela: o nodewebsocket publica a mensagem no exchange fanout notifications do RabbitMQ (rabbitmq_host:5672).' },
+      { e: ['ws-rabbit', 'nginx-ws', '8080-nginx-t', 'b-8080-t', 'phone-8080-t', 'peer-8080-t'], x: 'O exchange copia a mensagem para a fila dinâmica de CADA instância do nodewebsocket (cada uma cria a sua ao subir). Cada instância consome a sua fila e faz io.emit: a mensagem volta pelo túnel (nodewebsocket → nginx → navegador) a todos os alunos conectados nela, inclusive o autor.' }
+    ]},
+    websocketpesado: { t: 'WebSocket · evento pesado (upload de imagem → worker)', steps: [
+      { e: ['b-8080-t', 'phone-8080-t', 'peer-8080-t', '8080-nginx-t', 'nginx-ws'], x: 'O aluno envia uma imagem no chat: o arquivo vai por HTTP para o storage e o React emite chat:image pelo túnel só com a referência. O nodewebsocket NÃO processa nada pesado: o Node tem um fio só, e uma conta pesada ali congelaria todos os túneis daquele servidor. Ele só conecta e distribui eventos.' },
+      { e: ['ws-rabbit', 'worker-rabbit'], x: 'O Event faz o dispatch de um job na fila images do RabbitMQ (rabbitmq_host:5672) e responde chat:image:queued na hora. O nodeworker, outro container no MESMO RabbitMQ, consome a fila images: valida, redimensiona e gera a miniatura. O pesado roda ali, fora do websocket.' },
+      { e: ['worker-rabbit', 'ws-rabbit', 'nginx-ws', '8080-nginx-t', 'b-8080-t', 'phone-8080-t', 'peer-8080-t'], x: 'Terminou: o worker publica o resultado em OUTRO exchange, o results. Cada instância do nodewebsocket tem a sua fila dinâmica ligada a esse exchange: o fanout copia o resultado para todas, e cada uma faz io.emit aos seus clients pelo túnel. Todos os alunos veem a imagem, e o chat nunca parou.' }
     ]},
     busca: { t: 'HTTP API · search (POST /users/search)', steps: [
-      { e: ['b-8080', '8080-nginx', 'nginx-web', 'web-pg', 'web-es'], x: 'Igual ao list e get one: POST /users/search entra pela 8080, o nginx passa para nodeweb_host:3000 e o nodeweb fala com o Postgres. A diferença: o nodeweb se conecta direto no Elasticsearch (elasticsearch_host:9200, só pela rede interna). Etapa 1: os filtros (LIKE %x% virando wildcard) rodam no Elastic, que devolve só os ids. Etapa 2: WHERE id IN (...) no Postgres pela chave primária.' },
-      { e: ['nginx-web', '8080-nginx', 'b-8080'], x: 'O JSON com os usuários (na ordem do Elastic, dados atuais do Postgres, sem senha) volta nodeweb → nginx → navegador. Sem fila e sem worker: a busca só lê.' }
+      { e: ['b-8080', 'phone-8080', 'peer-8080', '8080-nginx', 'nginx-web', 'web-pg', 'web-es'], x: 'Igual ao list e get one: POST /users/search entra pela 8080, o nginx passa para nodeweb_host:3000 e o nodeweb fala com o Postgres. A diferença: o nodeweb se conecta direto no Elasticsearch (elasticsearch_host:9200, só pela rede interna). Etapa 1: os filtros (LIKE %x% virando wildcard) rodam no Elastic, que devolve só os ids. Etapa 2: WHERE id IN (...) no Postgres pela chave primária.' },
+      { e: ['nginx-web', '8080-nginx', 'b-8080', 'phone-8080', 'peer-8080'], x: 'O JSON com os usuários (na ordem do Elastic, dados atuais do Postgres, sem senha) volta nodeweb → nginx → navegador. Sem fila e sem worker: a busca só lê.' }
     ]}
 
 
@@ -139,7 +165,8 @@
     nodeworker: ['m-worker-nm'],
     nodecommand: ['m-cmd-nm'],
     vitehmr: ['m-hmr-nm'],
-    vitecompiler: ['m-compiler-nm']
+    vitecompiler: ['m-compiler-nm'],
+    nodewebsocket: ['m-ws-nm']
   };
 
   /* ── geometria ────────────────────────────────────────── */
@@ -168,17 +195,25 @@
   }
 
   var paths = {};
+  var tubes = {};
   var labels = {};
 
   function draw(){
     var k = stage.clientWidth / W;
     svg.innerHTML = '';
+    tubes = {};
     svg.setAttribute('viewBox', '0 0 ' + stage.clientWidth + ' ' + stage.clientHeight);
 
     var defs = el('defs', {});
     var marker = el('marker', { id: 'arrow', viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse' });
     marker.appendChild(el('path', { d: 'M0,0 L10,5 L0,10 z', fill: 'context-stroke' }));
     defs.appendChild(marker);
+    /* fios mais grossos (pool e túnel) têm ponta menor, senão a seta cresce junto com a espessura */
+    [['arrow-pool', 3.6], ['arrow-persist', 2.8], ['arrow-tunnel', 2.4]].forEach(function(m){
+      var mk = el('marker', { id: m[0], viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: String(m[1]), markerHeight: String(m[1]), orient: 'auto-start-reverse' });
+      mk.appendChild(el('path', { d: 'M0,0 L10,5 L0,10 z', fill: 'context-stroke' }));
+      defs.appendChild(mk);
+    });
     svg.appendChild(defs);
 
     EDGES.forEach(function(edge){
@@ -197,11 +232,17 @@
       var pts = [start].concat(mids, [end]);
       var d = 'M' + pts.map(function(p){ return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' L');
 
-      var attrs = { d: d, class: 'wire ' + edge.kind + (edge.flow ? ' ' + edge.flow : '') + (edge.scenarioOnly ? ' only-scenario' : '') + (edge.anchor ? ' m-bind' : '') + (edge.src ? ' m-volume' : ''), 'data-id': edge.id };
-      attrs['marker-end'] = 'url(#arrow)';
+      var attrs = { d: d, class: 'wire ' + edge.kind + (edge.flow ? ' ' + edge.flow : '') + (edge.scenarioOnly ? ' only-scenario' : '') + (edge.anchor ? ' m-bind' : '') + (edge.src ? ' m-volume' : '') + (edge.pool ? ' pool' : '') + (edge.persist ? ' persist' : '') + (edge.tunnel ? ' tunnel' : ''), 'data-id': edge.id };
+      if(!edge.tunnel){ attrs['marker-end'] = edge.pool ? 'url(#arrow-pool)' : (edge.persist ? 'url(#arrow-persist)' : 'url(#arrow)'); }
       var path = el('path', attrs);
       svg.appendChild(path);
       paths[edge.id] = path;
+      if(edge.tunnel){
+        /* miolo do tubo: por cima da parede, deixa só a borda roxa visível */
+        var inner = el('path', { d: d, class: 'tube-in ' + edge.kind + (edge.scenarioOnly ? ' only-scenario' : '') });
+        svg.appendChild(inner);
+        tubes[edge.id] = inner;
+      }
 
       if(!edge.label){ return; }
       /* rótulo perto do destino (rede); nas montagens, no meio da linha e do
@@ -300,7 +341,18 @@
     labels[id].setAttribute('opacity', '1');
   }
 
+  function syncTubes(){
+    Object.keys(tubes).forEach(function(id){
+      ['hot', 'flow'].forEach(function(c){ tubes[id].classList.toggle(c, paths[id].classList.contains(c)); });
+    });
+  }
+
   function applyState(){
+    applyStateRaw();
+    syncTubes();
+  }
+
+  function applyStateRaw(){
     clearClasses();
     if(scenario){ return applyScenario(); }
     var target = hoverId || focusId;
@@ -348,10 +400,22 @@
     if(!scenario){ return; }
     var ids = scenarioEdges(SCENARIOS[scenario]);
     ids.forEach(function(id, i){
+      var edge = EDGES.filter(function(x){ return x.id === id; })[0];
+      if(edge.tunnel){
+        /* tubo com duas pistas: ida (roxa, de um lado) e volta (verde-água, do outro) */
+        for(var n = 0; n < 4; n++){
+          [['tunnel-up', 1, 4], ['tunnel-down', -1, -4]].forEach(function(lane){
+            var c = el('circle', { r: 3.6, class: 'pulse ' + lane[0] + ' ' + edge.kind });
+            svg.appendChild(c);
+            dots.push({ node: c, path: paths[id], offset: n / 4 + i * 0.07, dir: lane[1], lane: lane[2] });
+          });
+        }
+        return;
+      }
       /* a bolinha leva as classes da seta (net, port, m-bind...) para sumir junto com o filtro */
-      var c = el('circle', { r: 6, class: 'pulse ' + paths[id].getAttribute('class').replace('wire ', '') });
-      svg.appendChild(c);
-      dots.push({ node: c, path: paths[id], offset: i / ids.length });
+      var c2 = el('circle', { r: 6, class: 'pulse ' + paths[id].getAttribute('class').replace('wire ', '') });
+      svg.appendChild(c2);
+      dots.push({ node: c2, path: paths[id], offset: i / ids.length, dir: 1, lane: 0 });
     });
   }
 
@@ -359,9 +423,23 @@
     var t = (time % 1600) / 1600;
     dots.forEach(function(d){
       var len = d.path.getTotalLength();
-      var p = d.path.getPointAtLength(len * ((t + d.offset) % 1));
-      d.node.setAttribute('cx', p.x);
-      d.node.setAttribute('cy', p.y);
+      var f = (t + d.offset) % 1;
+      if(d.dir < 0){ f = 1 - f; }
+      var at = len * f;
+      var p = d.path.getPointAtLength(at);
+      var x = p.x;
+      var y = p.y;
+      if(d.lane !== 0){
+        var a = d.path.getPointAtLength(Math.max(at - 1, 0));
+        var b = d.path.getPointAtLength(Math.min(at + 1, len));
+        var dx = b.x - a.x;
+        var dy = b.y - a.y;
+        var norm = Math.sqrt(dx * dx + dy * dy) || 1;
+        x = p.x - dy / norm * d.lane;
+        y = p.y + dx / norm * d.lane;
+      }
+      d.node.setAttribute('cx', x);
+      d.node.setAttribute('cy', y);
     });
     requestAnimationFrame(tick);
   }

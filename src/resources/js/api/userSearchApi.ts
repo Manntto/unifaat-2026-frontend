@@ -1,10 +1,10 @@
 import clientApi from "./_clientApi";
-import type { User, UserSearchFilters, PaginatedResponse } from "../types/api";
+import type { PaginatedResponse, User, UserSearchFilters } from "../types/api";
 
 export async function userSearchApi(
   filters: UserSearchFilters,
-  page: number = 1,
-  limit: number = 10
+  page: number,
+  limit: number
 ): Promise<PaginatedResponse<User>> {
   const { data } = await clientApi.post<PaginatedResponse<User>>("/users/search", {
     filters,
